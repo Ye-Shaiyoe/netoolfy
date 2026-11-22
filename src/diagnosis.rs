@@ -1,22 +1,10 @@
-//! Verdict engine: maps check results to a root-cause diagnosis.
-//!
-//! This module contains pure functions that are heavily tested. The
-//! diagnosis logic does not perform any I/O — it only analyzes the
-//! [`CheckResult`] values produced by the check runner.
-
 use crate::model::{CheckResult, Status, Verdict};
 
-/// Analyze a set of check results and produce a [`Verdict`].
-///
-/// The engine works bottom-up: it looks for the lowest-layer failure first,
-/// since that is likely the root cause. It then crafts a plain-language
-/// summary and recommended fix.
 pub fn diagnose(results: &[CheckResult]) -> Verdict {
     if results.is_empty() {
         return Verdict::new(Status::Ok, "No checks were run.");
     }
 
-    // Find the worst status across all results.
     let overall = results
         .iter()
         .map(|r| r.status)
@@ -24,16 +12,10 @@ pub fn diagnose(results: &[CheckResult]) -> Verdict {
         .max()
         .unwrap_or(Status::Ok);
 
-    // If everything is OK, return a positive verdict.
     if overall == Status::Ok {
-        return Verdict::new(
-            Status::Ok,
-            "Your connection looks healthy. No issues detected.",
-        );
+        return Verdict::new(Status::Ok, "Your connection is healthy.");
     }
 
-    // Find the first (lowest-layer) failing or warning check — that is
-    // most likely the root cause.
     let root_cause = results
         .iter()
         .filter(|r| r.status == Status::Fail || r.status == Status::Warn)
@@ -49,14 +31,10 @@ pub fn diagnose(results: &[CheckResult]) -> Verdict {
             }
             verdict
         }
-        None => Verdict::new(
-            Status::Ok,
-            "Your connection looks healthy. No issues detected.",
-        ),
+        None => Verdict::new(Status::Ok, "Your connection is healthy."),
     }
 }
 
-/// Build a human-readable summary from the root-cause check result.
 fn build_summary(root: &CheckResult, all_results: &[CheckResult]) -> String {
     let skipped_count = all_results
         .iter()
@@ -64,8 +42,6 @@ fn build_summary(root: &CheckResult, all_results: &[CheckResult]) -> String {
         .count();
 
     let mut summary = String::new();
-
-    // Summarize findings from the root cause.
     for finding in &root.findings {
         if !summary.is_empty() {
             summary.push(' ');
@@ -79,15 +55,13 @@ fn build_summary(root: &CheckResult, all_results: &[CheckResult]) -> String {
 
     if skipped_count > 0 {
         summary.push_str(&format!(
-            " ({} higher-layer check(s) skipped due to this failure.)",
-            skipped_count
+            " ({skipped_count} higher-layer check(s) skipped due to this failure)"
         ));
     }
 
     summary
 }
 
-/// Extract the first available fix suggestion from a check result.
 fn extract_first_fix(result: &CheckResult) -> Option<String> {
     result.findings.iter().find_map(|f| f.fix.clone())
 }
@@ -117,26 +91,28 @@ mod tests {
     }
 
     #[test]
-    fn all_ok_verdict() {
+    fn reports_healthy_when_all_checks_ok() {
         let results = vec![
             ok_result(Layer::Interface, "Interface"),
             ok_result(Layer::Gateway, "Gateway"),
             ok_result(Layer::Dns, "DNS"),
         ];
         let verdict = diagnose(&results);
+
         assert_eq!(verdict.overall_status, Status::Ok);
         assert!(verdict.summary.contains("healthy"));
     }
 
     #[test]
-    fn empty_results_verdict() {
+    fn handles_empty_check_results() {
         let verdict = diagnose(&[]);
+
         assert_eq!(verdict.overall_status, Status::Ok);
         assert!(verdict.summary.contains("No checks were run"));
     }
 
     #[test]
-    fn gateway_fail_is_root_cause() {
+    fn identifies_gateway_failure_as_root_cause() {
         let results = vec![
             ok_result(Layer::Interface, "Interface"),
             fail_result(
@@ -149,6 +125,7 @@ mod tests {
             skipped_result(Layer::Internet, "Internet"),
         ];
         let verdict = diagnose(&results);
+
         assert_eq!(verdict.overall_status, Status::Fail);
         assert!(verdict.summary.contains("Gateway"));
         assert!(verdict.summary.contains("unreachable"));
@@ -156,7 +133,7 @@ mod tests {
     }
 
     #[test]
-    fn dns_slow_warning() {
+    fn flags_dns_latency_as_warning() {
         let results = vec![
             ok_result(Layer::Interface, "Interface"),
             ok_result(Layer::Gateway, "Gateway"),
@@ -169,12 +146,13 @@ mod tests {
             ok_result(Layer::Internet, "Internet"),
         ];
         let verdict = diagnose(&results);
+
         assert_eq!(verdict.overall_status, Status::Warn);
         assert!(verdict.summary.contains("DNS"));
     }
 
     #[test]
-    fn fix_is_extracted() {
+    fn includes_recommended_fix_from_root_cause() {
         let finding = Finding::new(FindingCode::DnsSlow, "DNS is slow")
             .with_fix("Switch your DNS to 1.1.1.1 or 8.8.8.8");
         let results = vec![
@@ -183,12 +161,15 @@ mod tests {
             CheckResult::new(Layer::Dns, "DNS", Status::Warn).with_finding(finding),
         ];
         let verdict = diagnose(&results);
-        assert!(verdict.fix.is_some());
-        assert!(verdict.fix.unwrap().contains("1.1.1.1"));
+
+        assert_eq!(
+            verdict.fix.as_deref(),
+            Some("Switch your DNS to 1.1.1.1 or 8.8.8.8")
+        );
     }
 
     #[test]
-    fn interface_fail_is_root_cause_over_dns() {
+    fn prioritizes_interface_failure_over_dns() {
         let results = vec![
             fail_result(
                 Layer::Interface,
@@ -200,12 +181,13 @@ mod tests {
             skipped_result(Layer::Dns, "DNS"),
         ];
         let verdict = diagnose(&results);
+
         assert_eq!(verdict.overall_status, Status::Fail);
         assert!(verdict.summary.contains("No active network interface"));
     }
 
     #[test]
-    fn multiple_warnings_takes_lowest_layer() {
+    fn picks_lowest_layer_as_root_cause_among_warnings() {
         let results = vec![
             ok_result(Layer::Interface, "Interface"),
             warn_result(
@@ -217,8 +199,8 @@ mod tests {
             warn_result(Layer::Dns, "DNS", FindingCode::DnsSlow, "DNS is slow"),
         ];
         let verdict = diagnose(&results);
+
         assert_eq!(verdict.overall_status, Status::Warn);
-        // Root cause should be gateway (lower layer).
         assert!(verdict.summary.contains("Gateway"));
     }
 }
