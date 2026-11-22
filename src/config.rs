@@ -17,6 +17,9 @@ pub const JITTER_FAIL_MS: f64 = 50.0;
 pub const PING_COUNT: u32 = 5;
 pub const CERT_EXPIRY_WARN_DAYS: u32 = 14;
 
+pub const WIFI_SIGNAL_WARN_DBM: i32 = -75;
+pub const WIFI_SIGNAL_FAIL_DBM: i32 = -85;
+
 pub const PUBLIC_DNS_SERVERS: &[&str] = &["1.1.1.1", "8.8.8.8", "9.9.9.9"];
 pub const DNS_TEST_DOMAINS: &[&str] = &["google.com", "cloudflare.com", "example.com"];
 pub const INTERNET_TARGETS: &[&str] = &["1.1.1.1", "8.8.8.8"];
