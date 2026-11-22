@@ -1,0 +1,32 @@
+[package]
+name = "netoolfy"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.70"
+description = "All-in-one network diagnostic tool with automatic diagnosis — tells you where the problem is, not just raw data"
+repository = "https://github.com/AkromDev/netoolfy"
+license = "MIT OR Apache-2.0"
+keywords = ["network", "diagnostic", "dns", "ping", "troubleshoot"]
+categories = ["command-line-utilities", "network-programming"]
+readme = "README.md"
+
+[[bin]]
+name = "netoolfy"
+path = "src/main.rs"
+
+[lib]
+name = "netoolfy"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+async-trait = "0.1"
